@@ -3,9 +3,7 @@ Transform images using diffusion models
 """
 
 import asyncio
-import os
 import tempfile
-import threading
 
 import toga
 import torch
@@ -48,7 +46,7 @@ class Diffusify(toga.App):
 
         self.control_box.add(self.image_selection_box)
 
-        self.model_status_box = toga.Box(style=Pack(direction=COLUMN, margin=5, padding=5))
+        self.model_status_box = toga.Box(style=Pack(direction=COLUMN, margin=5))
         self.model_status_box.style.background_color = "#f0f0f0"  # Light gray background
 
         # Status heading
@@ -232,25 +230,69 @@ class Diffusify(toga.App):
         self.check_model_sync()
 
     def check_model_sync(self):
-        """Check if the model is downloaded (sync version)"""
-        model_path = os.path.join(self.get_app_folder(), "models", "sdxl-turbo")
+        """Check if the model is downloaded (blocking version)"""
+        model_path = self.paths.app / "resources" / "models"
 
-        if not os.path.exists(model_path) or not os.listdir(model_path):
-            # Model not found
+        # Update UI
+        self.model_download_status.text = "Checking..."
+
+        if not model_path.is_dir() or not model_path.iterdir():
+            # Model not found or directory empty
             self.model_download_status.text = "Model not downloaded"
             self.model_progress.value = 0
             self.download_button.enabled = True
+            return False
         else:
             # Model found
             self.model_download_status.text = "Model downloaded"
             self.model_progress.value = 100
             self.download_button.enabled = False
+            return True
+
+    def download_model(self, widget=None):
+        """Download the SDXL Turbo model from Hugging Face (blocking version)"""
+        # Update UI
+        self.status_label.text = "Downloading SDXL Turbo model... UI will freeze until complete."
+        self.download_button.enabled = False
+        self.model_download_status.text = "Downloading..."
+        self.model_progress.value = 10  # Just to show something is happening
+
+        try:
+            # Force UI update before blocking
+            self.main_window.content.refresh()
+
+            # Create path
+            model_path = self.paths.app / "resources" / "models"
+
+            # Download the model - this will block the UI
+            snapshot_download(
+                repo_id="stabilityai/sdxl-turbo",
+                local_dir=model_path,
+            )
+
+            # Update UI after download completes
+            self.model_download_status.text = "Model downloaded successfully!"
+            self.model_progress.value = 100
+            self.download_button.enabled = False
+            self.status_label.text = "Model downloaded successfully!"
+
+            # Enable process button if an image is selected
+            if self.input_image_path:
+                self.process_button.enabled = True
+
+            return True
+        except Exception as e:
+            # Update UI with error
+            self.model_download_status.text = f"Error: {str(e)}"
+            self.status_label.text = f"Error downloading model: {str(e)}"
+            self.download_button.enabled = True
+            return False
 
     async def check_model(self, sender=None):
         """Check if the model is downloaded already"""
-        model_path = os.path.join(self.get_app_folder(), "models", "sdxl-turbo")
+        model_path = self.paths.app / "resources" / "models"
 
-        if not os.path.exists(model_path) or not os.listdir(model_path):
+        if not model_path.is_dir() or not model_path.iterdir():
             # Model not found or directory empty
             self.model_download_status.text = "Model not downloaded"
             self.model_progress.value = 0
@@ -262,7 +304,7 @@ class Diffusify(toga.App):
                 "SDXL Turbo model not found. Would you like to download it now?",
             )
             if should_download:
-                self.download_model(None)  # Pass None as widget parameter
+                self.download_model()
             else:
                 self.status_label.text = "Model not downloaded. Some features may not work."
         else:
@@ -271,91 +313,8 @@ class Diffusify(toga.App):
             self.model_progress.value = 100
             self.download_button.enabled = False
             self.status_label.text = "Model found. Ready to convert images."
-        def confirm_dialog(self, title, message):
-            """Show a confirmation dialog and return True if confirmed"""
-            future = asyncio.Future()
 
-            def handler(dialog, result):
-                future.set_result(result)
 
-            dialog = toga.OptionDialog(
-                self.main_window,
-                title,
-                message,
-                options=[("Yes", True), ("No", False)],
-                on_result=handler,
-            )
-            dialog.show()
-
-            return future
-
-    def get_app_folder(self):
-        """Get the application's data folder"""
-        app_data_folder = os.path.join(os.path.expanduser("~"), ".sdxl_converter")
-
-        # Create the folder if it doesn't exist
-        if not os.path.exists(app_data_folder):
-            os.makedirs(app_data_folder)
-
-        # Create models subfolder
-        models_folder = os.path.join(app_data_folder, "models")
-        if not os.path.exists(models_folder):
-            os.makedirs(models_folder)
-
-        return app_data_folder
-
-    def download_model(self, widget):
-        """Download the SDXL Turbo model from Hugging Face with progress tracking"""
-        self.status_label.text = "Downloading SDXL Turbo model... this may take a while."
-        self.download_button.enabled = False
-        self.model_download_status.text = "Starting download..."
-        self.model_progress.value = 0
-
-        # Create a simple progress callback function
-        def progress_callback(progress, total):
-            percentage = int(100 * progress / total) if total > 0 else 0
-
-            # Update UI on main thread
-            def update_progress():
-                self.model_progress.value = percentage
-                self.model_download_status.text = f"Downloading: {percentage}%"
-
-            self.add_background_task(update_progress)
-
-        def _download():
-            try:
-                # Create path
-                model_path = os.path.join(self.get_app_folder(), "models", "sdxl-turbo")
-
-                # Download the model using HuggingFace Hub with progress tracking
-                snapshot_download(
-                    repo_id="stabilityai/sdxl-turbo",
-                    local_dir=model_path,
-                    local_dir_use_symlinks=False,
-                    progress_callback=progress_callback,
-                )
-
-                # Update UI on main thread when complete
-                def update_ui():
-                    self.model_progress.value = 100
-                    self.model_download_status.text = "Model downloaded successfully!"
-                    self.status_label.text = "Model downloaded successfully!"
-                    self.download_button.enabled = False
-
-                self.add_background_task(update_ui)
-
-            except Exception as e:
-                # Update UI on main thread with error
-                def update_error():
-                    self.model_download_status.text = f"Error: {str(e)}"
-                    self.status_label.text = f"Error downloading model: {str(e)}"
-                    self.download_button.enabled = True
-
-                self.add_background_task(update_error)
-
-        # Run in a background thread
-        thread = threading.Thread(target=_download, daemon=True)
-        thread.start()
 
     def strength_changed(self, widget):
         """Update the strength value label when the slider changes"""
@@ -377,21 +336,29 @@ class Diffusify(toga.App):
 
             if self.input_image_path:
                 # Update the label with the file name
-                self.image_path_label.text = os.path.basename(self.input_image_path)
+                self.image_path_label.text = self.input_image_path.name
 
                 # Display the input image
                 self.input_image_view.image = toga.Image(self.input_image_path)
-
-                # Enable the process button
-                self.process_button.enabled = True
 
                 # Reset the output image
                 self.output_image_view.image = None
                 self.output_image = None
                 self.save_button.enabled = False
 
-                # Update status
-                self.status_label.text = "Image selected. Ready to convert."
+                # Check if model is available before enabling processing
+                model_path = self.paths.app / "resources" / "models"
+                model_available = model_path.is_dir() and len(model_path.iterdir()) > 0
+
+                # Only enable the button if the model is available
+                self.process_button.enabled = model_available
+
+                # Update status message based on model availability
+                if model_available:
+                    self.status_label.text = "Image selected. Ready to convert."
+                else:
+                    self.status_label.text = "Image selected, but model not available. Please download the model first."
+
         except Exception as e:
             self.status_label.text = f"Error selecting image: {str(e)}"
 
@@ -399,9 +366,9 @@ class Diffusify(toga.App):
         """Initialize the diffusers pipeline with optimizations"""
         try:
             # Check if the model is saved locally
-            model_path = os.path.join(self.get_app_folder(), "models", "sdxl-turbo")
+            model_path = self.paths.app / "resources" / "models"
 
-            if os.path.exists(model_path):
+            if model_path:
                 model_id = model_path
             else:
                 model_id = "stabilityai/sdxl-turbo"
@@ -467,9 +434,9 @@ class Diffusify(toga.App):
                 self.status_label.text = "Loading model... This may take a while."
 
                 # Check if the model is saved locally
-                model_path = os.path.join(self.get_app_folder(), "models", "sdxl-turbo")
+                model_path = self.paths.app / "resources" / "models"
 
-                if os.path.exists(model_path):
+                if model_path.is_dir():
                     model_id = model_path
                 else:
                     model_id = "stabilityai/sdxl-turbo"
@@ -562,7 +529,7 @@ class Diffusify(toga.App):
                     with open(save_path, "wb") as dst_file:
                         dst_file.write(src_file.read())
 
-                self.status_label.text = f"Image saved to {os.path.basename(save_path)}"
+                self.status_label.text = f"Image saved to {save_path.name}"
 
         except Exception as e:
             self.status_label.text = f"Error saving image: {str(e)}"
