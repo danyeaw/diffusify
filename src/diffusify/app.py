@@ -26,18 +26,10 @@ class Diffusify(toga.App):
         Initialize the application
         """
         # Main window
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(800, 600))
-        self.main_window.MIN_SIZE = (700, 550)
+        self.main_window = toga.MainWindow(title=self.formal_name, size=(800, 800))
 
         # Main box with vertical layout
         main_box = toga.Box(style=Pack(direction=COLUMN, margin=10))
-
-        # Header
-        header_label = toga.Label(
-            'SDXL Turbo Image Converter',
-            style=Pack(text_align='center', margin=(0, 5), font_size=20)
-        )
-        main_box.add(header_label)
 
         # Split main area into two columns
         content_box = toga.SplitContainer(style=Pack(flex=1))
@@ -295,13 +287,14 @@ class Diffusify(toga.App):
         value = int(self.steps_slider.value)
         self.steps_value_label.text = str(value)
 
-    def select_image(self, widget):
+    async def select_image(self, widget):
         """Open a file dialog to select an input image"""
         try:
-            self.input_image_path = self.main_window.open_file_dialog(
-                "Select Image File",
+            file_dialog = toga.OpenFileDialog(
+                title="Select Image File",
                 file_types=["png", "jpg", "jpeg", "webp"]
             )
+            self.input_image_path = await self.main_window.dialog(file_dialog)
 
             if self.input_image_path:
                 # Update the label with the file name
@@ -448,19 +441,19 @@ class Diffusify(toga.App):
         thread = threading.Thread(target=_process, daemon=True)
         thread.start()
 
-    def save_output_image(self, widget):
+    async def save_output_image(self, widget):
         """Save the processed output image to a file"""
         if not self.output_image:
             return
 
         try:
             # Open a save file dialog
-            save_path = self.main_window.save_file_dialog(
-                "Save Output Image",
-                suggested_filename="sdxl_output.png",
+            save_dialog = toga.SaveFileDialog(
+                title="Save Output Image",
+                filename="sdxl_output.png",
                 file_types=["png"]
             )
-
+            save_path = await self.main_window.dialog(save_dialog)
             if save_path:
                 # Copy the image to the selected location
                 output_path = self.output_image.path
@@ -476,4 +469,4 @@ class Diffusify(toga.App):
 
 
 def main():
-    return Diffusify('SDXL Converter', 'org.example.sdxlconverter')
+    return Diffusify()
