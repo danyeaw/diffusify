@@ -18,7 +18,7 @@ from PIL import Image
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
-MODEL_ID = "stabilityai/sdxl-turbo"
+MODEL_ID = "Lykon/dreamshaper-xl-1-0"
 
 
 class DiffusifyApp(toga.App):
@@ -77,14 +77,14 @@ class DiffusifyApp(toga.App):
         self.steps_label = toga.Label("Steps:", style=Pack(margin_right=5, width=80))
         self.steps_box.add(self.steps_label)
         self.steps_slider = toga.Slider(
-            min=1,
-            max=4,
-            value=1,
+            min=15,
+            max=40,
+            value=25,
             on_change=self.steps_changed,
             style=Pack(margin=5, flex=1),
         )
         self.steps_box.add(self.steps_slider)
-        self.steps_value_label = toga.Label("1", style=Pack(width=40))
+        self.steps_value_label = toga.Label("25", style=Pack(width=40))
         self.steps_box.add(self.steps_value_label)
         self.control_box.add(self.steps_box)
 
@@ -202,8 +202,7 @@ class DiffusifyApp(toga.App):
                     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                     variant="fp16" if torch.cuda.is_available() else None,
                     use_safetensors=True,
-                    # Add safety_checker=None to match CLI behavior
-                    safety_checker=None,
+                    safety_checker=True,
                 )
 
                 # Apply Karras scheduler if requested
@@ -254,6 +253,8 @@ class DiffusifyApp(toga.App):
             strength = self.strength_slider.value
             steps = int(self.steps_slider.value)
 
+            negative_prompt="nudity, nude, breast, nsfw, explicit, foul language, pornography, mature, topless"
+
             # Ensure steps * strength is at least 1
             if steps * strength < 1:
                 steps = max(steps, int(1.0 / strength) + 1)
@@ -275,17 +276,16 @@ class DiffusifyApp(toga.App):
                 seed = torch.randint(0, 2147483647, (1,)).item()
                 generator = torch.Generator().manual_seed(seed)
 
-                # Run the pipeline with minimal parameters to match CLI behavior
                 pipeline_output = self.pipeline(
                     prompt=prompt,
+                    negative_prompt=negative_prompt,
                     image=input_image,
                     strength=strength,
                     num_inference_steps=steps,
                     generator=generator,
-                    guidance_scale=0.0,  # Recommended for SDXL Turbo
+                    guidance_scale=2.0,
                 )
 
-                # Get the output image
                 output_image = pipeline_output.images[0]
 
                 # Save to a temporary file
@@ -293,7 +293,6 @@ class DiffusifyApp(toga.App):
                     output_image.save(temp_file.name)
                     return temp_file.name
 
-            # Process the image in the background
             try:
                 output_path = await asyncio.get_event_loop().run_in_executor(None, _process_image)
 
