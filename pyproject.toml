@@ -1,4 +1,6 @@
-# This project was generated with 0.3.8.dev3338+gb558c3c0 using template: https://github.com/beeware/briefcase-template@main
+[project]
+requires-python = ">3.12"
+
 [tool.briefcase]
 project_name = "Diffusify"
 bundle = "me.yeaw"
