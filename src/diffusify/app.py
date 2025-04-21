@@ -3,6 +3,8 @@
 import asyncio
 import tempfile
 from pathlib import Path
+import time
+import threading
 
 import toga
 import torch
@@ -142,15 +144,29 @@ class DiffusifyApp(toga.App):
         # Add content to the SplitContainer
         content_box.content = [self.control_box, self.display_box]
 
-        # Status label at the bottom
+        # Status bar at the bottom
+        self.status_box = toga.Box(style=Pack(direction=COLUMN, margin=10))
+
+        # Status label
         self.status_label = toga.Label(
             "Ready to generate images.",
-            style=Pack(margin=10, text_align="center"),
+            style=Pack(margin_bottom=5, text_align="center"),
         )
+        self.status_box.add(self.status_label)
+
+        # Progress bar
+        self.progress_bar = toga.ProgressBar(
+            max=100,
+            value=0,
+            style=Pack(margin=5)
+        )
+        self.status_box.add(self.progress_bar)
+        # Initially hide the progress bar
+        self.progress_bar.style.update(visibility="hidden")
 
         # Assemble final layout
         main_box.add(content_box)
-        main_box.add(self.status_label)
+        main_box.add(self.status_box)
         self.main_window.content = main_box
 
         # Initialize other variables
@@ -159,6 +175,9 @@ class DiffusifyApp(toga.App):
         self.model_loaded = False
         self.width = 512
         self.height = 512
+        self.total_steps = 0
+        self.progress_visible = False
+        self.hide_timer = None
 
         # Show the main window
         self.main_window.show()
@@ -182,9 +201,70 @@ class DiffusifyApp(toga.App):
         # Update image view size
         self.output_image_view.style.update(width=min(512, width), height=min(512, height))
 
+    def show_progress(self, show=True):
+        """Show or hide the progress bar."""
+        if show and not self.progress_visible:
+            self.progress_bar.style.update(visibility="visible")
+            self.progress_visible = True
+        elif not show and self.progress_visible:
+            self.progress_bar.style.update(visibility="hidden")
+            self.progress_visible = False
+
+    def update_progress(self, value, message=None):
+        """Update the progress bar and optionally the status message.
+
+        This method should only be called from the main thread.
+        """
+        if value == 0:
+            self.show_progress(True)
+
+        self.progress_bar.value = value
+
+        if message:
+            self.status_label.text = message
+
+        if value >= 100:
+            # Use a simple timer to hide the progress bar after a delay
+            # First cancel any existing timer
+            if self.hide_timer:
+                self.hide_timer.cancel()
+
+            # Start a new timer
+            self.hide_timer = threading.Timer(1.5, lambda: self.loop.call_soon_threadsafe(
+                lambda: self.show_progress(False)
+            ))
+            self.hide_timer.daemon = True  # Allow the timer to be killed if the app exits
+            self.hide_timer.start()
+
+    def _progress_callback(self, step, timestep, latents):
+        """Callback function for StableDiffusionPipeline progress updates.
+
+        This will be called from a background thread, so we need to be
+        careful about updating the UI.
+        """
+        # Calculate percentage based on current step
+        percentage = int((step / self.total_steps) * 100)
+
+        # Update the UI using Toga's internal mechanisms for thread safety
+        self.loop.call_soon_threadsafe(
+            lambda: self._set_progress_ui(percentage)
+        )
+
+        # Return the latents unchanged (required by the callback API)
+        return latents
+
+    def _set_progress_ui(self, percentage):
+        """Update UI elements with the progress percentage.
+
+        This should only be called from the main thread.
+        """
+        self.progress_bar.value = percentage
+        self.status_label.text = f"Generating image... {percentage}%"
+
     async def load_pipeline(self):
         """Initialize the diffusion pipeline asynchronously."""
         self.status_label.text = "Loading model... Please wait."
+        self.update_progress(0)
 
         try:
             # Define the work to be done in the executor
@@ -214,17 +294,24 @@ class DiffusifyApp(toga.App):
                     return pipe.to("mps")  # Apple Silicon
                 return pipe
 
+            # Simulate progress while loading
+            for i in range(1, 5):
+                progress = i * 20
+                self.update_progress(progress, f"Loading model... {progress}%")
+                await asyncio.sleep(0.3)
+
             # Run the pipeline loading in a thread executor
             self.pipeline = await asyncio.get_event_loop().run_in_executor(None, _load_pipeline_sync)
             self.model_loaded = True
 
-            # Update status text in the main thread after the pipeline is loaded
+            # Update status text after the pipeline is loaded
             slicing_status = "with attention slicing" if self.attention_slicing_switch.value else "without attention slicing"
-            self.status_label.text = f"Model loaded successfully {slicing_status}."
+            self.update_progress(100, f"Model loaded successfully {slicing_status}.")
 
             return True
         except Exception as e:
-            self.status_label.text = f"Error loading model: {str(e)}"
+            error_msg = f"Error loading model: {str(e)}"
+            self.update_progress(100, error_msg)
             return False
 
     async def generate_image(self, widget):
@@ -240,7 +327,7 @@ class DiffusifyApp(toga.App):
                 self.generate_button.enabled = True
                 return
 
-        self.status_label.text = "Generating image..."
+        self.update_progress(0, "Preparing to generate image...")
 
         # Get parameters
         prompt = self.prompt_input.value
@@ -248,14 +335,21 @@ class DiffusifyApp(toga.App):
         steps = int(self.steps_slider.value)
         guidance_scale = float(self.guidance_slider.value)
 
+        # Store the total steps for progress calculation
+        self.total_steps = steps
+
         try:
+            # Set up the progress callback
+            self.pipeline.set_progress_bar_config(disable=True)  # Disable default progress bar
+
             # Define the generation work to be done in the executor
             def _generate_image_sync():
                 # Generate a seed for reproducibility
                 seed = torch.randint(0, 2147483647, (1,)).item()
                 generator = torch.Generator().manual_seed(seed)
 
-                # Generate the image
+                # We're still using callback for now since callback_on_step_end
+                # causes issues with the current diffusers version
                 pipeline_output = self.pipeline(
                     prompt=prompt,
                     negative_prompt=negative_prompt,
@@ -264,6 +358,8 @@ class DiffusifyApp(toga.App):
                     guidance_scale=guidance_scale,
                     width=self.width,
                     height=self.height,
+                    callback=self._progress_callback,
+                    callback_steps=1
                 )
 
                 output_image = pipeline_output.images[0]
@@ -274,15 +370,23 @@ class DiffusifyApp(toga.App):
                     return temp_file.name, seed
 
             # Run the generation in a thread executor
+            start_time = time.time()
             output_path, seed = await asyncio.get_event_loop().run_in_executor(None, _generate_image_sync)
+            end_time = time.time()
+            generation_time = round(end_time - start_time, 1)
 
             # Update UI with the result
             self.output_image = toga.Image(output_path)
             self.output_image_view.image = self.output_image
             self.save_button.enabled = True
-            self.status_label.text = f"Image generated successfully! (Seed: {seed})"
+
+            # Update status to show completion
+            status_text = f"Image generated in {generation_time}s! (Seed: {seed})"
+            self.update_progress(100, status_text)
+
         except Exception as e:
-            self.status_label.text = f"Error generating image: {str(e)}"
+            error_msg = f"Error generating image: {str(e)}"
+            self.update_progress(100, error_msg)
         finally:
             # Always re-enable the button
             self.generate_button.enabled = True
@@ -291,6 +395,9 @@ class DiffusifyApp(toga.App):
         """Save the generated image to a file."""
         if not self.output_image:
             return
+
+        # Update status
+        self.update_progress(0, "Preparing to save image...")
 
         # Open a save file dialog
         save_dialog = toga.SaveFileDialog(
@@ -310,10 +417,15 @@ class DiffusifyApp(toga.App):
                             dst_file.write(src_file.read())
 
                 # Run the file saving in a thread executor
+                self.update_progress(50, "Saving image...")
                 await asyncio.get_event_loop().run_in_executor(None, _save_file_sync)
-                self.status_label.text = f"Image saved to {Path(save_path).name}"
+
+                # Update status
+                file_name = Path(save_path).name
+                self.update_progress(100, f"Image saved to {file_name}")
             except Exception as e:
-                self.status_label.text = f"Error saving image: {str(e)}"
+                error_msg = f"Error saving image: {str(e)}"
+                self.update_progress(100, error_msg)
 
 
 def main():
