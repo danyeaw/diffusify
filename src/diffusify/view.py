@@ -215,14 +215,12 @@ class DiffusifyView(toga.Box):
         guidance_scale = float(self.guidance_slider.value)
 
         # Generate the image using the ViewModel
-        success = await self.viewmodel.generate_image(
+        await self.viewmodel.generate_image(
             prompt=prompt,
             negative_prompt=negative_prompt,
             steps=steps,
             guidance_scale=guidance_scale,
         )
-
-        # Button will be re-enabled in on_operation_complete
 
     async def save_output_image(self, widget):
         """Handle save button press."""

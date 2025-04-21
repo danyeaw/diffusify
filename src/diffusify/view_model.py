@@ -85,7 +85,10 @@ class DiffusifyViewModel:
             use_attention_slicing=use_attention_slicing, use_karras=use_karras
         )
 
-        if success:
+        # Ensure success is a proper boolean
+        success_result = bool(success)
+
+        if success_result:
             # Create status message
             status_message_parts = []
             if use_attention_slicing:
@@ -105,9 +108,9 @@ class DiffusifyViewModel:
             self.on_progress_update(100)
 
         if self.on_operation_complete:
-            self.on_operation_complete(success)
+            self.on_operation_complete(success_result)
 
-        return success
+        return success_result
 
     async def generate_image(
         self, prompt: str, negative_prompt: str, steps: int, guidance_scale: float

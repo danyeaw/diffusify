@@ -68,8 +68,7 @@ class DiffusionModel:
                 if torch.cuda.is_available():
                     self.safety_checker = self.safety_checker.to("cuda")
                 elif (
-                    hasattr(torch.backends, "mps")
-                    and torch.backends.mps.is_available()
+                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
                 ):
                     self.safety_checker = self.safety_checker.to("mps")
 
@@ -97,8 +96,7 @@ class DiffusionModel:
                 if torch.cuda.is_available():
                     return pipe.to("cuda"), None
                 elif (
-                    hasattr(torch.backends, "mps")
-                    and torch.backends.mps.is_available()
+                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
                 ):
                     return pipe.to("mps"), None  # Apple Silicon
                 return pipe, None
@@ -204,31 +202,31 @@ class DiffusionModel:
             # Define the generation work to be done in the executor
             def _generate_image_sync():
                 try:
-                    # Set up the pipeline
-                    self.pipeline.set_progress_bar_config(disable=True)
-
                     # Generate a seed for reproducibility
                     seed = torch.randint(0, 2147483647, (1,)).item()
                     generator = torch.Generator().manual_seed(seed)
 
-                    # Generate the image using the callback method
-                    pipeline_output = self.pipeline(
-                        prompt=prompt,
-                        negative_prompt=negative_prompt,
-                        num_inference_steps=steps,
-                        generator=generator,
-                        guidance_scale=guidance_scale,
-                        width=width,
-                        height=height,
-                        callback_on_step_end=self._progress_callback_wrapper,
-                    )
+                    if self.pipeline:
+                        self.pipeline.set_progress_bar_config(disable=True)
 
-                    output_image = pipeline_output.images[0]
+                        # Generate the image using the callback method
+                        pipeline_output = self.pipeline(
+                            prompt=prompt,
+                            negative_prompt=negative_prompt,
+                            num_inference_steps=steps,
+                            generator=generator,
+                            guidance_scale=guidance_scale,
+                            width=width,
+                            height=height,
+                            callback_on_step_end=self._progress_callback_wrapper,
+                        )
 
-                    # Apply safety checker
-                    output_image, has_nsfw_content = self.apply_safety_checker(
-                        output_image
-                    )
+                        output_image = pipeline_output.images[0]
+
+                        # Apply safety checker
+                        output_image, has_nsfw_content = self.apply_safety_checker(
+                            output_image
+                        )
 
                     # Save to a temporary file
                     with tempfile.NamedTemporaryFile(
@@ -264,7 +262,7 @@ class DiffusionModel:
         """
         try:
             # Define the file saving function
-            def _save_file_sync():
+            def _save_file_sync() -> str | None:
                 try:
                     with open(source_path, "rb") as src_file:
                         with open(save_path, "wb") as dst_file:
