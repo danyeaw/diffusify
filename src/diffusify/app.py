@@ -2,7 +2,6 @@
 
 import asyncio
 import tempfile
-import threading
 import time
 from pathlib import Path
 
@@ -11,6 +10,7 @@ import toga
 import torch
 from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from PIL import Image
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 from transformers import CLIPImageProcessor
@@ -246,10 +246,6 @@ class DiffusifyApp(toga.App):
         """
         if not self.safety_checker or not self.feature_extractor:
             return image, False
-
-        # Convert PIL image to numpy array
-        import numpy as np
-        from PIL import Image
 
         # Make sure image is in RGB format
         if image.mode != "RGB":
