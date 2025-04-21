@@ -28,6 +28,7 @@ requires = [
     "diffusers[torch]>=0.31.1",
     "transformers>=4.51.3",
     "huggingface_hub>=0.16.0",
+    "pillow>=11.2.1",
 ]
 test_requires = [
     "pytest",
