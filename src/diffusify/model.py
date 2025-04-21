@@ -90,7 +90,9 @@ class DiffusionModel:
                 # Apply Karras scheduler if requested
                 if use_karras:
                     pipe.scheduler = DPMSolverMultistepScheduler.from_config(
-                        pipe.scheduler.config, use_karras_sigmas=True
+                        pipe.scheduler.config,
+                        use_karras_sigmas=True,
+                        algorithm_type="sde-dpmsolver++",
                     )
 
                 # Move to appropriate device
