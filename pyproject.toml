@@ -1,10 +1,11 @@
 [project]
+name = "Diffusify"
 requires-python = ">3.12"
+version = "0.0.1"
 
 [tool.briefcase]
 project_name = "Diffusify"
 bundle = "me.yeaw"
-version = "0.0.1"
 url = "https://github.com/danyeaw/diffusify"
 license.file = "LICENSE"
 author = "Dan Yeaw"
@@ -32,6 +33,7 @@ requires = [
 ]
 test_requires = [
     "pytest",
+    "pytest-asyncio",
 ]
 
 [tool.briefcase.app.diffusify.macOS]
@@ -231,3 +233,6 @@ select = [
     "W",
 ]
 extend-select = ["I"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
