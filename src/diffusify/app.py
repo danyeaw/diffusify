@@ -222,7 +222,7 @@ class DiffusifyApp(toga.App):
                 await asyncio.sleep(1.5)
                 self.show_progress(False)
 
-            asyncio.create_task(hide_progress_after_delay())
+            asyncio.get_event_loop().create_task(hide_progress_after_delay())
 
     def _progress_callback(self, step, timestep, latents):
         """Callback function for StableDiffusionPipeline progress updates."""
