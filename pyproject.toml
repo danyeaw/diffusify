@@ -23,9 +23,8 @@ test_sources = [
 requires = [
     "toga>=0.3.0",
     "torch>=2.0.0",
-    "diffusers>=0.24.0",
-    "accelerate>=0.20.0",
-    "safetensors>=0.3.1",
+    "diffusers[torch]>=0.31.1",
+    "transformers>=4.51.3",
     "huggingface_hub>=0.16.0",
 ]
 test_requires = [
@@ -33,7 +32,7 @@ test_requires = [
 ]
 
 [tool.briefcase.app.diffusify.macOS]
-universal_build = true
+universal_build = false
 requires = [
     "toga-cocoa~=0.5.0",
     "std-nslog~=1.0.3",
