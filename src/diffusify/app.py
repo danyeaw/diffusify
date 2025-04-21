@@ -11,7 +11,6 @@ import toga
 import torch
 from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from PIL import Image
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 from transformers import CLIPImageProcessor
@@ -115,14 +114,6 @@ class DiffusifyApp(toga.App):
         # Karras scheduler option
         self.karras_switch = toga.Switch("Use Karras scheduler", style=Pack(margin=5))
         self.control_box.add(self.karras_switch)
-
-        # Safety checker switch
-        self.safety_checker_switch = toga.Switch(
-            "Enable safety checker (filters NSFW content)",
-            value=True,
-            style=Pack(margin=5),
-        )
-        self.control_box.add(self.safety_checker_switch)
 
         # Generate button
         self.generate_button = toga.Button("Generate Image", style=Pack(margin=10))
@@ -273,6 +264,10 @@ class DiffusifyApp(toga.App):
         if not self.safety_checker or not self.feature_extractor:
             return image, False
 
+        # Convert PIL image to numpy array
+        import numpy as np
+        from PIL import Image
+
         # Make sure image is in RGB format
         if image.mode != "RGB":
             image = image.convert("RGB")
@@ -325,24 +320,21 @@ class DiffusifyApp(toga.App):
         try:
             # Define the work to be done in the executor
             def _load_pipeline_sync():
-                # Load safety checker components separately if enabled
-                if self.safety_checker_switch.value:
-                    # Load safety checker and feature extractor
-                    self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                        "CompVis/stable-diffusion-safety-checker"
-                    )
-                    self.feature_extractor = CLIPImageProcessor.from_pretrained(
-                        "openai/clip-vit-base-patch32"
-                    )
+                # Always load safety checker and feature extractor
+                self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+                    "CompVis/stable-diffusion-safety-checker"
+                )
+                self.feature_extractor = CLIPImageProcessor.from_pretrained(
+                    "openai/clip-vit-base-patch32"
+                )
 
-                    # Move safety checker to appropriate device
-                    if torch.cuda.is_available():
-                        self.safety_checker = self.safety_checker.to("cuda")
-                    elif (
-                        hasattr(torch.backends, "mps")
-                        and torch.backends.mps.is_available()
-                    ):
-                        self.safety_checker = self.safety_checker.to("mps")
+                # Move safety checker to appropriate device
+                if torch.cuda.is_available():
+                    self.safety_checker = self.safety_checker.to("cuda")
+                elif (
+                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+                ):
+                    self.safety_checker = self.safety_checker.to("mps")
 
                 # Load SDXL pipeline (without safety checker - we'll add it separately)
                 pipe = StableDiffusionXLPipeline.from_pretrained(
@@ -389,8 +381,8 @@ class DiffusifyApp(toga.App):
             status_message_parts = []
             if self.attention_slicing_switch.value:
                 status_message_parts.append("with attention slicing")
-            if self.safety_checker_switch.value:
-                status_message_parts.append("with safety checker")
+            # Safety checker is always on, so always include it
+            status_message_parts.append("with safety checker")
 
             status_suffix = ""
             if status_message_parts:
@@ -455,13 +447,8 @@ class DiffusifyApp(toga.App):
 
                 output_image = pipeline_output.images[0]
 
-                # Apply safety checker if enabled
-                has_nsfw_content = False
-                if self.safety_checker_switch.value and self.safety_checker is not None:
-                    # Apply safety checker as a separate step
-                    output_image, has_nsfw_content = self.apply_safety_checker(
-                        output_image
-                    )
+                # Always apply safety checker
+                output_image, has_nsfw_content = self.apply_safety_checker(output_image)
 
                 # Save to a temporary file
                 with tempfile.NamedTemporaryFile(
