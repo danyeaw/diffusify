@@ -125,12 +125,14 @@ class DiffusifyView(toga.Box):
 
         # Attention slicing switch
         self.attention_slicing_switch = toga.Switch(
-            "Enable attention slicing", value=True, style=Pack(margin=5)
+            "Enable attention slicing", style=Pack(margin=5)
         )
         control_box.add(self.attention_slicing_switch)
 
         # Karras scheduler option
-        self.karras_switch = toga.Switch("Use Karras scheduler", style=Pack(margin=5))
+        self.karras_switch = toga.Switch(
+            "Use Karras scheduler", value=True, style=Pack(margin=5)
+        )
         control_box.add(self.karras_switch)
 
         # Generate button

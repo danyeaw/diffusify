@@ -11,8 +11,8 @@ from diffusify.model import DiffusionModel, save_image
 # Constants for the tests
 TEST_PROMPT = "a beautiful sunset over mountains"
 TEST_NEG_PROMPT = "ugly, blurry, distorted"
-TEST_SMALL_SIZE = 128  # Small size for faster tests
-TEST_FEW_STEPS = 5  # Few steps for faster tests
+TEST_SIZE = 128  # Small size for faster tests
+TEST_STEPS = 5  # Few steps for faster tests
 
 
 @pytest.mark.asyncio
@@ -53,18 +53,15 @@ async def test_image_generation():
     img_path, seed, has_nsfw, error = await model.generate_image(
         prompt=TEST_PROMPT,
         negative_prompt=TEST_NEG_PROMPT,
-        steps=TEST_FEW_STEPS,
+        steps=TEST_STEPS,
         guidance_scale=7.5,
-        width=TEST_SMALL_SIZE,
-        height=TEST_SMALL_SIZE,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
     )
     generation_time = time.time() - start_time
 
     # Log performance data
-    print(
-        f"Image generation took {generation_time:.2f}"
-        f"seconds with {TEST_FEW_STEPS} steps"
-    )
+    print(f"Image generation took {generation_time:.2f}seconds with {TEST_STEPS} steps")
 
     try:
         # Verify generation succeeded
@@ -82,7 +79,7 @@ async def test_image_generation():
 
         # Verify the image is valid
         with Image.open(img_path_obj) as img:
-            assert img.size == (TEST_SMALL_SIZE, TEST_SMALL_SIZE), (
+            assert img.size == (TEST_SIZE, TEST_SIZE), (
                 f"Wrong image size, got {img.size}"
             )
             assert img.mode == "RGB", f"Wrong image mode, got {img.mode}"
@@ -105,7 +102,7 @@ async def test_safety_checker():
     assert success is True, f"Failed to load model: {error}"
 
     # Create a test image to check
-    test_image = Image.new("RGB", (TEST_SMALL_SIZE, TEST_SMALL_SIZE), color="white")
+    test_image = Image.new("RGB", (TEST_SIZE, TEST_SIZE), color="white")
 
     # Apply safety checker
     filtered_image, has_nsfw = model.apply_safety_checker(test_image)
@@ -165,20 +162,20 @@ async def test_random_seed_generation():
     img1_path, seed1, _, _ = await model.generate_image(
         prompt=TEST_PROMPT,
         negative_prompt=TEST_NEG_PROMPT,
-        steps=TEST_FEW_STEPS,
+        steps=TEST_STEPS,
         guidance_scale=7.5,
-        width=TEST_SMALL_SIZE,
-        height=TEST_SMALL_SIZE,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
     )
 
     # Generate second image with same parameters
     img2_path, seed2, _, _ = await model.generate_image(
         prompt=TEST_PROMPT,
         negative_prompt=TEST_NEG_PROMPT,
-        steps=TEST_FEW_STEPS,
+        steps=TEST_STEPS,
         guidance_scale=7.5,
-        width=TEST_SMALL_SIZE,
-        height=TEST_SMALL_SIZE,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
     )
 
     try:
@@ -228,10 +225,10 @@ async def test_progress_callback():
     img_path, _, _, _ = await model.generate_image(
         prompt=TEST_PROMPT,
         negative_prompt=TEST_NEG_PROMPT,
-        steps=TEST_FEW_STEPS,
+        steps=TEST_STEPS,
         guidance_scale=7.5,
-        width=TEST_SMALL_SIZE,
-        height=TEST_SMALL_SIZE,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
     )
 
     try:
@@ -253,6 +250,138 @@ async def test_progress_callback():
             assert progress_values[i] >= progress_values[i - 1], "Progress decreased"
     finally:
         # Clean up the generated file
+        if img_path:
+            path_obj = Path(img_path)
+            if path_obj.exists():
+                path_obj.unlink()
+
+
+async def test_first_load_image_generation():
+    """Test that image generation works on first model load."""
+
+    # Create a fresh model instance
+    model = DiffusionModel()
+    assert not model.model_loaded, "Model should start unloaded"
+
+    # Track progress
+    progress_values = []
+    model.set_progress_callback(lambda p: progress_values.append(p))
+
+    # 1. Load the model
+    success, error = await model.load_pipeline(use_attention_slicing=True)
+
+    # Verify loading succeeded
+    assert success is True, f"Failed to load model: {error}"
+    assert model.model_loaded is True, "Model not marked as loaded"
+    assert model.pipeline is not None, "Pipeline not created"
+
+    # 2. Generate an image - first attempt after loading
+    img_path, seed, has_nsfw, error = await model.generate_image(
+        prompt=TEST_PROMPT,
+        negative_prompt=TEST_NEG_PROMPT,
+        steps=TEST_STEPS,
+        guidance_scale=7.5,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
+    )
+
+    # Cleanup and handling for the first image
+    try:
+        # Check if image generation succeeded
+        assert error is None, f"First generation failed with error: {error}"
+        assert img_path is not None, "No image path returned on first attempt"
+
+        path_obj = Path(img_path)
+        assert path_obj.exists(), "Generated image file doesn't exist"
+
+        # Verify the image
+        with Image.open(path_obj) as img:
+            assert img.size == (TEST_SIZE, TEST_SIZE), f"Wrong image size: {img.size}"
+            assert img.mode == "RGB", f"Wrong image mode: {img.mode}"
+
+        # Check progress tracking
+        assert len(progress_values) > 0, "No progress updates received"
+
+    finally:
+        # Clean up the first image
+        if img_path:
+            path_obj = Path(img_path)
+            if path_obj.exists():
+                path_obj.unlink()
+
+    # 3. Reset progress tracking
+    progress_values.clear()
+
+    # 4. Generate a second image with the same model
+    img_path2, seed2, has_nsfw2, error2 = await model.generate_image(
+        prompt=TEST_PROMPT,
+        negative_prompt=TEST_NEG_PROMPT,
+        steps=TEST_STEPS,
+        guidance_scale=7.5,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
+    )
+
+    # Cleanup and handling for the second image
+    try:
+        # Compare second attempt results
+        assert error2 is None, f"Second generation failed with error: {error2}"
+        assert img_path2 is not None, "No image path returned on second attempt"
+
+        path_obj2 = Path(img_path2)
+        assert path_obj2.exists(), "Second generated image doesn't exist"
+
+        # Verify that both generations produced valid images
+        assert seed != seed2, "Both generations used the same seed"
+
+        # Check progress tracking for second generation
+        assert len(progress_values) > 0, "No progress updates on second attempt"
+
+    finally:
+        # Clean up the second image
+        if img_path2:
+            path_obj2 = Path(img_path2)
+            if path_obj2.exists():
+                path_obj2.unlink()
+
+
+async def test_reload_behavior():
+    """Test loading, unloading, and reloading the model."""
+
+    # Create a fresh model instance
+    model = DiffusionModel()
+
+    # 1. Load the model first time
+    success, error = await model.load_pipeline(use_attention_slicing=True)
+    assert success is True, f"Failed to load model: {error}"
+
+    # 2. "Unload" the model by setting attributes to None
+    model.pipeline = None
+    model.model_loaded = False
+
+    # 3. Load the model again
+    success, error = await model.load_pipeline(use_attention_slicing=True)
+    assert success is True, f"Failed to reload model: {error}"
+
+    # 4. Generate an image after reload
+    img_path, seed, has_nsfw, error = await model.generate_image(
+        prompt=TEST_PROMPT,
+        negative_prompt=TEST_NEG_PROMPT,
+        steps=TEST_STEPS,
+        guidance_scale=7.5,
+        width=TEST_SIZE,
+        height=TEST_SIZE,
+    )
+
+    # Cleanup
+    try:
+        assert error is None, f"Generation after reload failed: {error}"
+        assert img_path is not None, "No image path returned after reload"
+
+        path_obj = Path(img_path)
+        assert path_obj.exists(), "Image doesn't exist after reload"
+
+    finally:
         if img_path:
             path_obj = Path(img_path)
             if path_obj.exists():
