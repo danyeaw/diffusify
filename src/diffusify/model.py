@@ -56,55 +56,52 @@ class DiffusionModel:
         try:
             # Define work to be done in executor
             def _load_pipeline_sync():
-                try:
-                    # Load safety checker and feature extractor
-                    self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                        "CompVis/stable-diffusion-safety-checker"
+                # Load safety checker and feature extractor
+                self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+                    "CompVis/stable-diffusion-safety-checker"
+                )
+                self.feature_extractor = CLIPImageProcessor.from_pretrained(
+                    "openai/clip-vit-base-patch32"
+                )
+
+                # Move safety checker to appropriate device
+                if torch.cuda.is_available():
+                    self.safety_checker = self.safety_checker.to("cuda")
+                elif (
+                    hasattr(torch.backends, "mps")
+                    and torch.backends.mps.is_available()
+                ):
+                    self.safety_checker = self.safety_checker.to("mps")
+
+                # Load SDXL pipeline
+                pipe = StableDiffusionXLPipeline.from_pretrained(
+                    MODEL_ID,
+                    torch_dtype=torch.float16
+                    if torch.cuda.is_available()
+                    else torch.float32,
+                    variant="fp16" if torch.cuda.is_available() else None,
+                    use_safetensors=True,
+                )
+
+                # Enable attention slicing if requested
+                if use_attention_slicing:
+                    pipe.enable_attention_slicing()
+
+                # Apply Karras scheduler if requested
+                if use_karras:
+                    pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+                        pipe.scheduler.config, use_karras_sigmas=True
                     )
-                    self.feature_extractor = CLIPImageProcessor.from_pretrained(
-                        "openai/clip-vit-base-patch32"
-                    )
 
-                    # Move safety checker to appropriate device
-                    if torch.cuda.is_available():
-                        self.safety_checker = self.safety_checker.to("cuda")
-                    elif (
-                        hasattr(torch.backends, "mps")
-                        and torch.backends.mps.is_available()
-                    ):
-                        self.safety_checker = self.safety_checker.to("mps")
-
-                    # Load SDXL pipeline
-                    pipe = StableDiffusionXLPipeline.from_pretrained(
-                        MODEL_ID,
-                        torch_dtype=torch.float16
-                        if torch.cuda.is_available()
-                        else torch.float32,
-                        variant="fp16" if torch.cuda.is_available() else None,
-                        use_safetensors=True,
-                    )
-
-                    # Enable attention slicing if requested
-                    if use_attention_slicing:
-                        pipe.enable_attention_slicing()
-
-                    # Apply Karras scheduler if requested
-                    if use_karras:
-                        pipe.scheduler = DPMSolverMultistepScheduler.from_config(
-                            pipe.scheduler.config, use_karras_sigmas=True
-                        )
-
-                    # Move to appropriate device
-                    if torch.cuda.is_available():
-                        return pipe.to("cuda"), None
-                    elif (
-                        hasattr(torch.backends, "mps")
-                        and torch.backends.mps.is_available()
-                    ):
-                        return pipe.to("mps"), None  # Apple Silicon
-                    return pipe, None
-                except Exception as e:
-                    return None, e
+                # Move to appropriate device
+                if torch.cuda.is_available():
+                    return pipe.to("cuda"), None
+                elif (
+                    hasattr(torch.backends, "mps")
+                    and torch.backends.mps.is_available()
+                ):
+                    return pipe.to("mps"), None  # Apple Silicon
+                return pipe, None
 
             # Run the pipeline loading in a thread executor
             loop = asyncio.get_event_loop()
