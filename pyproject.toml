@@ -216,3 +216,17 @@ namespace_packages = true
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "B9",
+    "C",
+    "E",
+    "F",
+    "PLW1",
+    "SLF",
+    "UP",
+    "W",
+]
+extend-select = ["I"]

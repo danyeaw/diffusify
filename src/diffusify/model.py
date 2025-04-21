@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
-from typing import Callable
+from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -250,30 +251,33 @@ class DiffusionModel:
         except Exception as e:
             return None, None, False, str(e)
 
-    async def save_image(self, source_path: str, save_path: str) -> str | None:
-        """Save the image to a file.
 
-        Args:
-            source_path: Path to the source image
-            save_path: Path where to save the image
+def _save_file_sync(source_path: Path, save_path: Path) -> str | None:
+    try:
+        with open(source_path, "rb") as src_file:
+            with open(save_path, "wb") as dst_file:
+                dst_file.write(src_file.read())
+        return None
+    except Exception as e:
+        return str(e)
 
-        Returns:
-            Error message if failed, None if successful
-        """
-        try:
-            # Define the file saving function
-            def _save_file_sync() -> str | None:
-                try:
-                    with open(source_path, "rb") as src_file:
-                        with open(save_path, "wb") as dst_file:
-                            dst_file.write(src_file.read())
-                    return None
-                except Exception as e:
-                    return str(e)
 
-            # Run the file saving in a thread executor
-            loop = asyncio.get_event_loop()
-            error = await loop.run_in_executor(None, _save_file_sync)
-            return error
-        except Exception as e:
-            return str(e)
+async def save_image(source_path: Path, save_path: Path) -> str | None:
+    """Save the image to a file.
+
+    Args:
+        source_path: Path to the source image
+        save_path: Path where to save the image
+
+    Returns:
+        Error message if failed, None if successful
+    """
+    try:
+        # Run the file saving in a thread executor
+        loop = asyncio.get_event_loop()
+        error: str | None = await loop.run_in_executor(
+            None, _save_file_sync, source_path, save_path
+        )
+        return error
+    except Exception as e:
+        return str(e)

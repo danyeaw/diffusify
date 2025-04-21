@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import toga
 from toga.style import Pack
@@ -227,11 +228,11 @@ class DiffusifyView(toga.Box):
         # Open a save file dialog
         save_dialog = toga.SaveFileDialog(
             title="Save Generated Image",
-            filename="diffusify_output.png",
+            suggested_filename="diffusify_output.png",
             file_types=["png"],
         )
 
-        save_path = await widget.window.dialog(save_dialog)
+        save_path = Path(await widget.window.dialog(save_dialog))
 
         if save_path:
             # Save the image using the ViewModel

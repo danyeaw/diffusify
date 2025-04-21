@@ -1,9 +1,9 @@
 import asyncio
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
-from diffusify.model import DiffusionModel
+from diffusify.model import DiffusionModel, save_image
 
 
 class DiffusifyViewModel:
@@ -202,7 +202,7 @@ class DiffusifyViewModel:
             self.on_progress_update(50)
         self.update_status("Saving image...")
 
-        error = await self.model.save_image(self.output_image_path, save_path)
+        error = await save_image(self.output_image_path, save_path)
 
         if error:
             self.update_status(f"Error saving image: {error}")
