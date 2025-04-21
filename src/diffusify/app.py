@@ -169,7 +169,6 @@ class DiffusifyApp(toga.App):
         self.height = 512
         self.total_steps = 0
         self.progress_visible = False
-        self.hide_timer = None
 
         # Safety checker components
         self.safety_checker = None
@@ -219,32 +218,16 @@ class DiffusifyApp(toga.App):
             self.status_label.text = message
 
         if value >= 100:
-            # Use a simple timer to hide the progress bar after a delay
-            # First cancel any existing timer
-            if self.hide_timer:
-                self.hide_timer.cancel()
+            async def hide_progress_after_delay():
+                await asyncio.sleep(1.5)
+                self.show_progress(False)
 
-            # Start a new timer
-            self.hide_timer = threading.Timer(
-                1.5,
-                lambda: self.loop.call_soon_threadsafe(
-                    lambda: self.show_progress(False)
-                ),
-            )
-            self.hide_timer.daemon = (
-                True  # Allow the timer to be killed if the app exits
-            )
-            self.hide_timer.start()
+            asyncio.create_task(hide_progress_after_delay())
 
     def _progress_callback(self, step, timestep, latents):
         """Callback function for StableDiffusionPipeline progress updates."""
-        # Calculate percentage based on current step
         percentage = int((step / self.total_steps) * 100)
-
-        # Update the UI using Toga's internal mechanisms for thread safety
         self.loop.call_soon_threadsafe(lambda: self._set_progress_ui(percentage))
-
-        # Return the latents unchanged (required by the callback API)
         return latents
 
     def _set_progress_ui(self, percentage):
