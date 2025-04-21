@@ -2,15 +2,19 @@
 
 import asyncio
 import tempfile
-from pathlib import Path
-import time
 import threading
+import time
+from pathlib import Path
 
+import numpy as np
 import toga
 import torch
-from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from PIL import Image
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
+from transformers import CLIPImageProcessor
 
 MODEL_ID = "Lykon/dreamshaper-xl-1-0"
 
@@ -40,7 +44,9 @@ class DiffusifyApp(toga.App):
 
         # Negative prompt input
         self.neg_prompt_box = toga.Box(style=Pack(direction=COLUMN, margin_bottom=10))
-        self.neg_prompt_label = toga.Label("Negative Prompt:", style=Pack(margin_bottom=5))
+        self.neg_prompt_label = toga.Label(
+            "Negative Prompt:", style=Pack(margin_bottom=5)
+        )
         self.neg_prompt_box.add(self.neg_prompt_label)
         self.neg_prompt_input = toga.MultilineTextInput(
             placeholder="Enter negative prompt here...",
@@ -59,7 +65,7 @@ class DiffusifyApp(toga.App):
         size_options_box = toga.Box(style=Pack(direction=ROW))
         self.size_selection = toga.Selection(
             items=["512×512", "768×768", "1024×1024", "768×512", "512×768"],
-            style=Pack(margin=5)
+            style=Pack(margin=5),
         )
         self.size_selection.on_select = self.size_changed
         size_options_box.add(self.size_selection)
@@ -84,7 +90,9 @@ class DiffusifyApp(toga.App):
 
         # Guidance scale slider
         self.guidance_box = toga.Box(style=Pack(direction=ROW, margin_bottom=10))
-        self.guidance_label = toga.Label("Guidance:", style=Pack(margin_right=5, width=80))
+        self.guidance_label = toga.Label(
+            "Guidance:", style=Pack(margin_right=5, width=80)
+        )
         self.guidance_box.add(self.guidance_label)
         self.guidance_slider = toga.Slider(
             min=1.0,
@@ -100,24 +108,24 @@ class DiffusifyApp(toga.App):
 
         # Attention slicing switch
         self.attention_slicing_switch = toga.Switch(
-            "Enable attention slicing",
-            value=True,
-            style=Pack(margin=5)
+            "Enable attention slicing", value=True, style=Pack(margin=5)
         )
         self.control_box.add(self.attention_slicing_switch)
 
         # Karras scheduler option
-        self.karras_switch = toga.Switch(
-            "Use Karras scheduler",
-            style=Pack(margin=5)
-        )
+        self.karras_switch = toga.Switch("Use Karras scheduler", style=Pack(margin=5))
         self.control_box.add(self.karras_switch)
 
-        # Generate button
-        self.generate_button = toga.Button(
-            "Generate Image",
-            style=Pack(margin=10)
+        # Safety checker switch
+        self.safety_checker_switch = toga.Switch(
+            "Enable safety checker (filters NSFW content)",
+            value=True,
+            style=Pack(margin=5),
         )
+        self.control_box.add(self.safety_checker_switch)
+
+        # Generate button
+        self.generate_button = toga.Button("Generate Image", style=Pack(margin=10))
         self.generate_button.on_press = self.generate_image
         self.control_box.add(self.generate_button)
 
@@ -133,10 +141,7 @@ class DiffusifyApp(toga.App):
         self.display_box.add(self.output_image_view)
 
         # Save button for output
-        self.save_button = toga.Button(
-            "Save Image",
-            style=Pack(margin_top=10)
-        )
+        self.save_button = toga.Button("Save Image", style=Pack(margin_top=10))
         self.save_button.on_press = self.save_output_image
         self.save_button.enabled = False
         self.display_box.add(self.save_button)
@@ -155,11 +160,7 @@ class DiffusifyApp(toga.App):
         self.status_box.add(self.status_label)
 
         # Progress bar
-        self.progress_bar = toga.ProgressBar(
-            max=100,
-            value=0,
-            style=Pack(margin=5)
-        )
+        self.progress_bar = toga.ProgressBar(max=100, value=0, style=Pack(margin=5))
         self.status_box.add(self.progress_bar)
         # Initially hide the progress bar
         self.progress_bar.style.update(visibility="hidden")
@@ -178,6 +179,10 @@ class DiffusifyApp(toga.App):
         self.total_steps = 0
         self.progress_visible = False
         self.hide_timer = None
+
+        # Safety checker components
+        self.safety_checker = None
+        self.feature_extractor = None
 
         # Show the main window
         self.main_window.show()
@@ -199,7 +204,9 @@ class DiffusifyApp(toga.App):
         self.width = width
         self.height = height
         # Update image view size
-        self.output_image_view.style.update(width=min(512, width), height=min(512, height))
+        self.output_image_view.style.update(
+            width=min(512, width), height=min(512, height)
+        )
 
     def show_progress(self, show=True):
         """Show or hide the progress bar."""
@@ -211,10 +218,7 @@ class DiffusifyApp(toga.App):
             self.progress_visible = False
 
     def update_progress(self, value, message=None):
-        """Update the progress bar and optionally the status message.
-
-        This method should only be called from the main thread.
-        """
+        """Update the progress bar and optionally the status message."""
         if value == 0:
             self.show_progress(True)
 
@@ -230,36 +234,88 @@ class DiffusifyApp(toga.App):
                 self.hide_timer.cancel()
 
             # Start a new timer
-            self.hide_timer = threading.Timer(1.5, lambda: self.loop.call_soon_threadsafe(
-                lambda: self.show_progress(False)
-            ))
-            self.hide_timer.daemon = True  # Allow the timer to be killed if the app exits
+            self.hide_timer = threading.Timer(
+                1.5,
+                lambda: self.loop.call_soon_threadsafe(
+                    lambda: self.show_progress(False)
+                ),
+            )
+            self.hide_timer.daemon = (
+                True  # Allow the timer to be killed if the app exits
+            )
             self.hide_timer.start()
 
     def _progress_callback(self, step, timestep, latents):
-        """Callback function for StableDiffusionPipeline progress updates.
-
-        This will be called from a background thread, so we need to be
-        careful about updating the UI.
-        """
+        """Callback function for StableDiffusionPipeline progress updates."""
         # Calculate percentage based on current step
         percentage = int((step / self.total_steps) * 100)
 
         # Update the UI using Toga's internal mechanisms for thread safety
-        self.loop.call_soon_threadsafe(
-            lambda: self._set_progress_ui(percentage)
-        )
+        self.loop.call_soon_threadsafe(lambda: self._set_progress_ui(percentage))
 
         # Return the latents unchanged (required by the callback API)
         return latents
 
     def _set_progress_ui(self, percentage):
-        """Update UI elements with the progress percentage.
-
-        This should only be called from the main thread.
-        """
+        """Update UI elements with the progress percentage."""
         self.progress_bar.value = percentage
         self.status_label.text = f"Generating image... {percentage}%"
+
+    def apply_safety_checker(self, image):
+        """Apply safety checker to the generated image.
+
+        Args:
+            image: PIL Image to check
+
+        Returns:
+            tuple: (filtered_image, has_nsfw_content)
+        """
+        if not self.safety_checker or not self.feature_extractor:
+            return image, False
+
+        # Make sure image is in RGB format
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        # Extract image features
+        safety_checker_input = self.feature_extractor([image], return_tensors="pt")
+
+        # Move to the same device as the safety checker
+        if torch.cuda.is_available():
+            safety_checker_input = safety_checker_input.to("cuda")
+            device = "cuda"
+            dtype = torch.float16
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            safety_checker_input = safety_checker_input.to("mps")
+            device = "mps"
+            dtype = torch.float16
+        else:
+            device = "cpu"
+            dtype = torch.float32
+
+        # Convert image to numpy array
+        image_np = np.array(image).astype(np.float32) / 255.0
+
+        # Safety checker expects these dimensions: [batch_size, channels, height, width]
+        image_np = np.transpose(image_np, (2, 0, 1))  # [C, H, W]
+        image_np = np.expand_dims(image_np, axis=0)  # [1, C, H, W]
+
+        # Convert to torch tensor
+        image_tensor = torch.from_numpy(image_np).to(device=device, dtype=dtype)
+
+        # Run safety checker
+        result, has_nsfw_concept = self.safety_checker(
+            images=image_tensor, clip_input=safety_checker_input.pixel_values.to(dtype)
+        )
+
+        # Convert result back to PIL Image
+        if has_nsfw_concept[0]:
+            # If NSFW content detected, create a black image of the same size
+            filtered_image = Image.new("RGB", image.size, (0, 0, 0))
+            return filtered_image, True
+        else:
+            # No NSFW content, return original
+            return image, False
 
     async def load_pipeline(self):
         """Initialize the diffusion pipeline asynchronously."""
@@ -269,10 +325,31 @@ class DiffusifyApp(toga.App):
         try:
             # Define the work to be done in the executor
             def _load_pipeline_sync():
-                # Use the text-to-image pipeline instead of img2img
+                # Load safety checker components separately if enabled
+                if self.safety_checker_switch.value:
+                    # Load safety checker and feature extractor
+                    self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+                        "CompVis/stable-diffusion-safety-checker"
+                    )
+                    self.feature_extractor = CLIPImageProcessor.from_pretrained(
+                        "openai/clip-vit-base-patch32"
+                    )
+
+                    # Move safety checker to appropriate device
+                    if torch.cuda.is_available():
+                        self.safety_checker = self.safety_checker.to("cuda")
+                    elif (
+                        hasattr(torch.backends, "mps")
+                        and torch.backends.mps.is_available()
+                    ):
+                        self.safety_checker = self.safety_checker.to("mps")
+
+                # Load SDXL pipeline (without safety checker - we'll add it separately)
                 pipe = StableDiffusionXLPipeline.from_pretrained(
                     MODEL_ID,
-                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    torch_dtype=torch.float16
+                    if torch.cuda.is_available()
+                    else torch.float32,
                     variant="fp16" if torch.cuda.is_available() else None,
                     use_safetensors=True,
                 )
@@ -290,7 +367,9 @@ class DiffusifyApp(toga.App):
                 # Move to appropriate device
                 if torch.cuda.is_available():
                     return pipe.to("cuda")
-                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                elif (
+                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+                ):
                     return pipe.to("mps")  # Apple Silicon
                 return pipe
 
@@ -301,12 +380,23 @@ class DiffusifyApp(toga.App):
                 await asyncio.sleep(0.3)
 
             # Run the pipeline loading in a thread executor
-            self.pipeline = await asyncio.get_event_loop().run_in_executor(None, _load_pipeline_sync)
+            self.pipeline = await asyncio.get_event_loop().run_in_executor(
+                None, _load_pipeline_sync
+            )
             self.model_loaded = True
 
             # Update status text after the pipeline is loaded
-            slicing_status = "with attention slicing" if self.attention_slicing_switch.value else "without attention slicing"
-            self.update_progress(100, f"Model loaded successfully {slicing_status}.")
+            status_message_parts = []
+            if self.attention_slicing_switch.value:
+                status_message_parts.append("with attention slicing")
+            if self.safety_checker_switch.value:
+                status_message_parts.append("with safety checker")
+
+            status_suffix = ""
+            if status_message_parts:
+                status_suffix = " " + ", ".join(status_message_parts)
+
+            self.update_progress(100, f"Model loaded successfully{status_suffix}.")
 
             return True
         except Exception as e:
@@ -340,7 +430,9 @@ class DiffusifyApp(toga.App):
 
         try:
             # Set up the progress callback
-            self.pipeline.set_progress_bar_config(disable=True)  # Disable default progress bar
+            self.pipeline.set_progress_bar_config(
+                disable=True
+            )  # Disable default progress bar
 
             # Define the generation work to be done in the executor
             def _generate_image_sync():
@@ -348,8 +440,7 @@ class DiffusifyApp(toga.App):
                 seed = torch.randint(0, 2147483647, (1,)).item()
                 generator = torch.Generator().manual_seed(seed)
 
-                # We're still using callback for now since callback_on_step_end
-                # causes issues with the current diffusers version
+                # Generate the image
                 pipeline_output = self.pipeline(
                     prompt=prompt,
                     negative_prompt=negative_prompt,
@@ -359,19 +450,34 @@ class DiffusifyApp(toga.App):
                     width=self.width,
                     height=self.height,
                     callback=self._progress_callback,
-                    callback_steps=1
+                    callback_steps=1,
                 )
 
                 output_image = pipeline_output.images[0]
 
+                # Apply safety checker if enabled
+                has_nsfw_content = False
+                if self.safety_checker_switch.value and self.safety_checker is not None:
+                    # Apply safety checker as a separate step
+                    output_image, has_nsfw_content = self.apply_safety_checker(
+                        output_image
+                    )
+
                 # Save to a temporary file
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".png", delete=False
+                ) as temp_file:
                     output_image.save(temp_file.name)
-                    return temp_file.name, seed
+                    return temp_file.name, seed, has_nsfw_content
 
             # Run the generation in a thread executor
             start_time = time.time()
-            output_path, seed = await asyncio.get_event_loop().run_in_executor(None, _generate_image_sync)
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, _generate_image_sync
+            )
+
+            # Unpack results
+            output_path, seed, has_nsfw_content = result
             end_time = time.time()
             generation_time = round(end_time - start_time, 1)
 
@@ -382,6 +488,9 @@ class DiffusifyApp(toga.App):
 
             # Update status to show completion
             status_text = f"Image generated in {generation_time}s! (Seed: {seed})"
+            if has_nsfw_content:
+                status_text += " - NSFW content detected and filtered."
+
             self.update_progress(100, status_text)
 
         except Exception as e:
