@@ -56,8 +56,56 @@ class DiffusifyViewModel:
         if self.on_status_update:
             self.on_status_update(message)
 
+    def validate_generation_parameters(
+        self, prompt: str, negative_prompt: str, steps: int, guidance_scale: float
+    ):
+        """Validate and normalize generation parameters.
+
+        Args:
+            prompt: Text prompt
+            negative_prompt: Negative prompt
+            steps: Number of inference steps
+            guidance_scale: Guidance scale parameter
+
+        Returns:
+            Tuple of (valid_prompt, valid_neg_prompt, valid_steps, valid_guidance)
+        """
+        # Validate prompt
+        valid_prompt = prompt.strip()
+        if not valid_prompt:
+            valid_prompt = "A beautiful image"
+            self.update_status("Warning: Empty prompt, using default.")
+
+        # Validate steps
+        valid_steps = max(1, steps)
+        if valid_steps != steps:
+            self.update_status(f"Warning: Steps must be positive, using {valid_steps}.")
+
+        # Validate guidance scale
+        valid_guidance_scale = min(max(1.0, guidance_scale), 15.0)
+        if valid_guidance_scale != guidance_scale:
+            self.update_status(
+                f"Warning: Adjusted guidance scale to {valid_guidance_scale}."
+            )
+
+        return valid_prompt, negative_prompt, valid_steps, valid_guidance_scale
+
     def update_image_size(self, width: int, height: int):
-        """Update image dimensions."""
+        """Update image dimensions.
+
+        Args:
+            width: Image width in pixels (must be positive)
+            height: Image height in pixels (must be positive)
+        """
+        # Validate dimensions
+        if width <= 0:
+            width = 512
+            self.update_status("Warning: Width must be positive, using default (512).")
+
+        if height <= 0:
+            height = 512
+            self.update_status("Warning: Height must be positive, using default (512).")
+
         self.width = width
         self.height = height
 
@@ -120,8 +168,8 @@ class DiffusifyViewModel:
         Args:
             prompt: Text prompt
             negative_prompt: Negative prompt
-            steps: Number of inference steps
-            guidance_scale: Guidance scale
+            steps: Number of inference steps (must be positive)
+            guidance_scale: Guidance scale (recommended range: 1.0-15.0)
 
         Returns:
             Success flag
@@ -136,6 +184,13 @@ class DiffusifyViewModel:
             success = await self.load_model(True, False)
             if not success:
                 return False
+
+        # Validate and normalize parameters
+        prompt, negative_prompt, steps, guidance_scale = (
+            self.validate_generation_parameters(
+                prompt, negative_prompt, steps, guidance_scale
+            )
+        )
 
         start_time = time.time()
 
@@ -180,6 +235,16 @@ class DiffusifyViewModel:
 
         return True
 
+    def _update_progress(self, value: int):
+        """Helper method to update progress if callback is set."""
+        if self.on_progress_update:
+            self.on_progress_update(value)
+
+    def _complete_operation(self, success: bool):
+        """Helper method to call operation complete callback if set."""
+        if self.on_operation_complete:
+            self.on_operation_complete(success)
+
     async def save_image(self, save_path: str) -> bool:
         """Save the generated image to a file.
 
@@ -189,35 +254,35 @@ class DiffusifyViewModel:
         Returns:
             Success flag
         """
+        # Validate prerequisites
         if not self.output_image_path:
             self.update_status("No image to save.")
+            self._complete_operation(False)
             return False
 
-        # Update status
-        if self.on_progress_update:
-            self.on_progress_update(0)
-        self.update_status("Preparing to save image...")
+        if not save_path:
+            self.update_status("Error: Save path cannot be empty.")
+            self._complete_operation(False)
+            return False
 
-        if self.on_progress_update:
-            self.on_progress_update(50)
+        # Update status and progress
+        self._update_progress(0)
+        self.update_status("Preparing to save image...")
+        self._update_progress(50)
         self.update_status("Saving image...")
 
+        # Perform the save operation
         error = await save_image(self.output_image_path, save_path)
 
+        # Handle result
         if error:
             self.update_status(f"Error saving image: {error}")
-            if self.on_operation_complete:
-                self.on_operation_complete(False)
+            self._complete_operation(False)
             return False
 
-        # Update status
+        # Report success
         file_name = Path(save_path).name
         self.update_status(f"Image saved to {file_name}")
-
-        if self.on_progress_update:
-            self.on_progress_update(100)
-
-        if self.on_operation_complete:
-            self.on_operation_complete(True)
-
+        self._update_progress(100)
+        self._complete_operation(True)
         return True

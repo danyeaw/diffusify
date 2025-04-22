@@ -452,25 +452,6 @@ async def test_save_to_invalid_path(reset_viewmodel):
 
 
 @pytest.mark.asyncio
-async def test_generate_with_empty_prompt(reset_viewmodel):
-    """Test handling of empty prompt."""
-    vm = reset_viewmodel
-
-    success = await vm.generate_image(
-        prompt="",  # Empty prompt
-        negative_prompt="",
-        steps=2,
-        guidance_scale=7.5,
-    )
-
-    if not success:
-        assert any("Empty prompt" in msg for msg in vm.status_messages)
-    else:
-        assert vm.output_image_path is not None
-        assert Path(vm.output_image_path).exists()
-
-
-@pytest.mark.asyncio
 async def test_generate_with_invalid_parameters(reset_viewmodel):
     """Test handling of invalid generation parameters."""
     vm = reset_viewmodel
@@ -483,12 +464,99 @@ async def test_generate_with_invalid_parameters(reset_viewmodel):
         guidance_scale=7.5,
     )
 
-    if success:
-        assert vm.output_image_path is not None
-        assert Path(vm.output_image_path).exists()
-    else:
-        # If it fails, it should have updated the status message
-        assert len(vm.status_messages) > 0
+    assert success is True, "Generation should succeed with corrected parameters"
+    assert vm.output_image_path is not None, "Should have a valid output path"
+    assert Path(vm.output_image_path).exists(), "Generated image should exist"
+    assert any(
+        "Warning: Steps must be positive" in msg for msg in vm.status_messages
+    ), "Should display warning about correcting steps"
+
+
+@pytest.mark.asyncio
+async def test_generate_with_invalid_guidance_scale(reset_viewmodel):
+    """Test handling of invalid guidance scale parameter."""
+    vm = reset_viewmodel
+
+    # Try with invalid guidance scale (negative)
+    success = await vm.generate_image(
+        prompt="Invalid guidance scale test",
+        negative_prompt="",
+        steps=2,
+        guidance_scale=-2.0,  # Invalid negative guidance scale
+    )
+
+    # Should correct the parameter and show a warning
+    assert success is True, "Generation should succeed with corrected parameters"
+    assert any(
+        "Warning: Adjusted guidance scale" in msg for msg in vm.status_messages
+    ), "Should display warning about correcting guidance scale"
+
+
+@pytest.mark.asyncio
+async def test_generate_with_empty_prompt(reset_viewmodel):
+    """Test handling of empty prompt."""
+    vm = reset_viewmodel
+
+    # Try with empty prompt
+    success = await vm.generate_image(
+        prompt="",  # Empty prompt
+        negative_prompt="",
+        steps=2,
+        guidance_scale=7.5,
+    )
+
+    # Should use default prompt and show a warning
+    assert success is True, "Generation should succeed with default prompt"
+    assert any("Warning: Empty prompt" in msg for msg in vm.status_messages), (
+        "Should display warning about empty prompt"
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_image_size_with_invalid_dimensions(reset_viewmodel):
+    """Test handling of invalid image dimensions."""
+    vm = reset_viewmodel
+
+    # Clear status messages
+    vm.status_messages.clear()
+
+    # Try with invalid dimensions
+    vm.update_image_size(width=-100, height=0)
+
+    # Should correct dimensions and show warnings
+    assert vm.width == 512, "Width should be set to default"
+    assert vm.height == 512, "Height should be set to default"
+    assert any(
+        "Warning: Width must be positive" in msg for msg in vm.status_messages
+    ), "Should warn about invalid width"
+    assert any(
+        "Warning: Height must be positive" in msg for msg in vm.status_messages
+    ), "Should warn about invalid height"
+
+
+@pytest.mark.asyncio
+async def test_save_with_empty_path(reset_viewmodel):
+    """Test error handling when saving with empty path."""
+    vm = reset_viewmodel
+
+    # First generate a valid image
+    await vm.generate_image(
+        prompt="Empty path test",
+        negative_prompt="",
+        steps=2,
+        guidance_scale=7.5,
+    )
+
+    # Clear status messages
+    vm.status_messages.clear()
+
+    # Try to save with empty path
+    success = await vm.save_image("")
+
+    assert success is False, "Save should fail with empty path"
+    assert any(
+        "Error: Save path cannot be empty" in msg for msg in vm.status_messages
+    ), "Should display error about empty path"
 
 
 # -----------------------------------------------------------------------------
