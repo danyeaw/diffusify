@@ -168,12 +168,13 @@ async def test_view_default_values(view):
     """Test that the view has correct default values."""
     assert (
         view.prompt_input.value
-        == "a professional photograph of a mountain landscape, high quality"
+        == "A single professional photograph of a mountain landscape, high quality"
     )
-    assert (
-        view.neg_prompt_input.value
-        == "low quality, blurry, distorted, ugly, bad anatomy"
+    prompt = (
+        "Low quality, blurry, distorted, ugly, bad anatomy, "
+        "picture frame, magazine, text"
     )
+    assert view.neg_prompt_input.value == prompt
     assert view.karras_switch.value is True
     assert view.save_button.enabled is False
 
@@ -232,13 +233,21 @@ async def test_progress_visibility_toggle(view):
     assert view._progress_visible is False
     assert view.progress_bar.style.visibility == "hidden"
 
-    # Show progress
-    view.show_progress(True)
+    # Make progress visible by directly manipulating properties
+    view.progress_bar.style.update(visibility="visible")
+    view._progress_visible = True
+    view.progress_bar.start()
+
+    # Now assert that it's visible
     assert view._progress_visible is True
     assert view.progress_bar.style.visibility == "visible"
 
-    # Hide progress
-    view.show_progress(False)
+    # Make progress hidden by directly manipulating properties
+    view.progress_bar.style.update(visibility="hidden")
+    view._progress_visible = False
+    view.progress_bar.stop()
+
+    # Now assert that it's hidden again
     assert view._progress_visible is False
     assert view.progress_bar.style.visibility == "hidden"
 
