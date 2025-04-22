@@ -243,9 +243,10 @@ class DiffusifyView(toga.Box):
             file_types=["png"],
         )
 
-        save_path = Path(await widget.window.dialog(save_dialog))
+        save_location = await widget.window.dialog(save_dialog)
+        if save_location:
+            save_path = Path(save_location)
 
-        if save_path:
             # Disable the save button during saving
             self.save_button.enabled = False
 
