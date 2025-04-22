@@ -209,7 +209,6 @@ class DiffusionModel:
                             width=width,
                             height=height,
                             callback_on_step_end=self._progress_callback_wrapper,
-                            callback_steps=1,  # Call after every step
                         )
 
                         output_image = pipeline_output.images[0]
