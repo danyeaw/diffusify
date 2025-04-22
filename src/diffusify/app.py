@@ -11,7 +11,7 @@ class DiffusifyApp(toga.App):
 
     def startup(self):
         """Initialize the application."""
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(800, 650))
+        self.main_window = toga.MainWindow(title=self.formal_name, size=(800, 700))
 
         self.viewmodel = DiffusifyViewModel()
         self.view = DiffusifyView(self.viewmodel)
