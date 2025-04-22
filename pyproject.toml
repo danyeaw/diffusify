@@ -1,7 +1,60 @@
 [project]
-name = "Diffusify"
-requires-python = ">3.12"
+name = "diffusify"
 version = "0.0.1"
+requires-python = ">3.12"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13"
+]
+dependencies = [
+  "diffusers[torch]>=0.31.1",
+  "huggingface-hub>=0.16",
+  "numpy>=2.2.5",
+  "pillow>=11.2.1",
+  "toga>=0.3",
+  "torch>=2",
+  "transformers>=4.51.3",
+]
+
+optional-dependencies.test = [
+  "pytest",
+  "pytest-asyncio",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+line-length = 88
+lint.select = [
+  "B",
+  "B9",
+  "C",
+  "E",
+  "F",
+  "PLW1",
+  "SLF",
+  "UP",
+  "W",
+]
+lint.extend-select = [ "I" ]
+lint.per-file-ignores."tests/*" = [ "SLF001" ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+check_untyped_defs = true
+strict_optional = true
+disallow_any_explicit = true
+show_error_codes = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+namespace_packages = true
 
 [tool.briefcase]
 project_name = "Diffusify"
@@ -17,151 +70,139 @@ description = "Generate images using diffusion models"
 long_description = """More details about the app should go here.
 """
 sources = [
-    "src/diffusify",
+  "src/diffusify",
 ]
 test_sources = [
-    "tests",
-]
-
-requires = [
-    "toga>=0.3.0",
-    "torch>=2.0.0",
-    "diffusers[torch]>=0.31.1",
-    "transformers>=4.51.3",
-    "huggingface_hub>=0.16.0",
-    "pillow>=11.2.1",
-]
-test_requires = [
-    "pytest",
-    "pytest-asyncio",
+  "tests",
 ]
 
 [tool.briefcase.app.diffusify.macOS]
 universal_build = false
 requires = [
-    "toga-cocoa~=0.5.0",
-    "std-nslog~=1.0.3",
+  "toga-cocoa~=0.5.0",
+  "std-nslog~=1.0.3",
 ]
 
 [tool.briefcase.app.diffusify.linux]
 requires = [
-    "toga-gtk~=0.5.0",
-    # PyGObject 3.52.1 enforces a requirement on libgirepository-2.0-dev. This library
-    # isn't available on Debian 12/Ubuntu 22.04. If you don't need to support those (or
-    # older) releases, you can remove this version pin. See beeware/toga#3143.
-    "pygobject < 3.52.1",
+  "toga-gtk~=0.5.0",
+  # PyGObject 3.52.1 enforces a requirement on libgirepository-2.0-dev. This library
+  # isn't available on Debian 12/Ubuntu 22.04. If you don't need to support those (or
+  # older) releases, you can remove this version pin. See beeware/toga#3143.
+  "pygobject < 3.52.1",
 ]
 
 [tool.briefcase.app.diffusify.linux.system.debian]
 system_requires = [
-    # Needed to compile pycairo wheel
-    "libcairo2-dev",
-    # One of the following two packages are needed to compile PyGObject wheel. If you
-    # remove the pygobject pin in the requires list, you should also change to the
-    # version 2.0 of the girepository library. See beeware/toga#3143.
-    "libgirepository1.0-dev",
-    # "libgirepository-2.0-dev",
+  # Needed to compile pycairo wheel
+  "libcairo2-dev",
+  # One of the following two packages are needed to compile PyGObject wheel. If you
+  # remove the pygobject pin in the requires list, you should also change to the
+  # version 2.0 of the girepository library. See beeware/toga#3143.
+  "libgirepository1.0-dev",
+  # "libgirepository-2.0-dev",
 ]
 
 system_runtime_requires = [
-    # Needed to provide GTK and its GI bindings
-    "gir1.2-gtk-3.0",
-    # One of the following two packages are needed to use PyGObject at runtime. If you
-    # remove the pygobject pin in the requires list, you should also change to the
-    # version 2.0 of the girepository library. See beeware/toga#3143.
-    "libgirepository-1.0-1",
-    # "libgirepository-2.0-0",
-    # Dependencies that GTK looks for at runtime
-    "libcanberra-gtk3-module",
-    # Needed to provide WebKit2 at runtime
-    # Note: Debian 11 requires gir1.2-webkit2-4.0 instead
-    # "gir1.2-webkit2-4.1",
+  # Needed to provide GTK and its GI bindings
+  "gir1.2-gtk-3.0",
+  # One of the following two packages are needed to use PyGObject at runtime. If you
+  # remove the pygobject pin in the requires list, you should also change to the
+  # version 2.0 of the girepository library. See beeware/toga#3143.
+  "libgirepository-1.0-1",
+  # "libgirepository-2.0-0",
+  # Dependencies that GTK looks for at runtime
+  "libcanberra-gtk3-module",
+  # Needed to provide WebKit2 at runtime
+  # Note: Debian 11 requires gir1.2-webkit2-4.0 instead
+  # "gir1.2-webkit2-4.1",
 ]
 
 [tool.briefcase.app.diffusify.linux.system.rhel]
 system_requires = [
-    # Needed to compile pycairo wheel
-    "cairo-gobject-devel",
-    # Needed to compile PyGObject wheel
-    "gobject-introspection-devel",
+  # Needed to compile pycairo wheel
+  "cairo-gobject-devel",
+  # Needed to compile PyGObject wheel
+  "gobject-introspection-devel",
 ]
 
 system_runtime_requires = [
-    # Needed to support Python bindings to GTK
-    "gobject-introspection",
-    # Needed to provide GTK
-    "gtk3",
-    # Dependencies that GTK looks for at runtime
-    "libcanberra-gtk3",
-    # Needed to provide WebKit2 at runtime
-    # "webkit2gtk3",
+  # Needed to support Python bindings to GTK
+  "gobject-introspection",
+  # Needed to provide GTK
+  "gtk3",
+  # Dependencies that GTK looks for at runtime
+  "libcanberra-gtk3",
+  # Needed to provide WebKit2 at runtime
+  # "webkit2gtk3",
 ]
 
 [tool.briefcase.app.diffusify.linux.system.suse]
 system_requires = [
-    # Needed to compile pycairo wheel
-    "cairo-devel",
-    # Needed to compile PyGObject wheel
-    "gobject-introspection-devel",
+  # Needed to compile pycairo wheel
+  "cairo-devel",
+  # Needed to compile PyGObject wheel
+  "gobject-introspection-devel",
 ]
 
 system_runtime_requires = [
-    # Needed to provide GTK
-    "gtk3",
-    # Needed to support Python bindings to GTK
-    "gobject-introspection", "typelib(Gtk) = 3.0",
-    # Dependencies that GTK looks for at runtime
-    "libcanberra-gtk3-module",
-    # Needed to provide WebKit2 at runtime
-    # "libwebkit2gtk3", "typelib(WebKit2)",
+  # Needed to provide GTK
+  "gtk3",
+  # Needed to support Python bindings to GTK
+  "gobject-introspection",
+  "typelib(Gtk) = 3.0",
+  # Dependencies that GTK looks for at runtime
+  "libcanberra-gtk3-module",
+  # Needed to provide WebKit2 at runtime
+  # "libwebkit2gtk3", "typelib(WebKit2)",
 ]
 
 [tool.briefcase.app.diffusify.linux.system.arch]
 system_requires = [
-    # Needed to compile pycairo wheel
-    "cairo",
-    # Needed to compile PyGObject wheel
-    "gobject-introspection",
-    # Runtime dependencies that need to exist so that the
-    # Arch package passes final validation.
-    # Needed to provide GTK
-    "gtk3",
-    # Dependencies that GTK looks for at runtime
-    "libcanberra",
-    # Needed to provide WebKit2
-    # "webkit2gtk",
+  # Needed to compile pycairo wheel
+  "cairo",
+  # Needed to compile PyGObject wheel
+  "gobject-introspection",
+  # Runtime dependencies that need to exist so that the
+  # Arch package passes final validation.
+  # Needed to provide GTK
+  "gtk3",
+  # Dependencies that GTK looks for at runtime
+  "libcanberra",
+  # Needed to provide WebKit2
+  # "webkit2gtk",
 ]
 
 system_runtime_requires = [
-    # Needed to provide GTK
-    "gtk3",
-    # Needed to provide PyGObject bindings
-    "gobject-introspection-runtime",
-    # Dependencies that GTK looks for at runtime
-    "libcanberra",
-    # Needed to provide WebKit2 at runtime
-    # "webkit2gtk",
+  # Needed to provide GTK
+  "gtk3",
+  # Needed to provide PyGObject bindings
+  "gobject-introspection-runtime",
+  # Dependencies that GTK looks for at runtime
+  "libcanberra",
+  # Needed to provide WebKit2 at runtime
+  # "webkit2gtk",
 ]
 
 [tool.briefcase.app.diffusify.linux.appimage]
 manylinux = "manylinux_2_28"
 
 system_requires = [
-    # Needed to compile pycairo wheel
-    "cairo-gobject-devel",
-    # Needed to compile PyGObject wheel
-    "gobject-introspection-devel",
-    # Needed to provide GTK
-    "gtk3-devel",
-    # Dependencies that GTK looks for at runtime, that need to be
-    # in the build environment to be picked up by linuxdeploy
-    "libcanberra-gtk3",
-    "PackageKit-gtk3-module",
-    "gvfs-client",
+  # Needed to compile pycairo wheel
+  "cairo-gobject-devel",
+  # Needed to compile PyGObject wheel
+  "gobject-introspection-devel",
+  # Needed to provide GTK
+  "gtk3-devel",
+  # Dependencies that GTK looks for at runtime, that need to be
+  # in the build environment to be picked up by linuxdeploy
+  "libcanberra-gtk3",
+  "PackageKit-gtk3-module",
+  "gvfs-client",
 ]
 
 linuxdeploy_plugins = [
-    "DEPLOY_GTK_VERSION=3 gtk",
+  "DEPLOY_GTK_VERSION=3 gtk",
 ]
 
 [tool.briefcase.app.diffusify.linux.flatpak]
@@ -171,70 +212,34 @@ flatpak_sdk = "org.gnome.Sdk"
 
 [tool.briefcase.app.diffusify.windows]
 requires = [
-    "toga-winforms~=0.5.0",
+  "toga-winforms~=0.5.0",
 ]
 
 # Mobile deployments
 [tool.briefcase.app.diffusify.iOS]
 requires = [
-    "toga-iOS~=0.5.0",
-    "std-nslog~=1.0.3",
+  "toga-iOS~=0.5.0",
+  "std-nslog~=1.0.3",
 ]
 
 [tool.briefcase.app.diffusify.android]
 requires = [
-    "toga-android~=0.5.0",
+  "toga-android~=0.5.0",
 ]
 
 base_theme = "Theme.MaterialComponents.Light.DarkActionBar"
 
 build_gradle_dependencies = [
-    "com.google.android.material:material:1.12.0",
-    # Needed for DetailedList
-    # "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0",
-    # Needed for MapView
-    # "org.osmdroid:osmdroid-android:6.1.20",
+  "com.google.android.material:material:1.12.0",
+  # Needed for DetailedList
+  # "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0",
+  # Needed for MapView
+  # "org.osmdroid:osmdroid-android:6.1.20",
 ]
 
 # Web deployments
 [tool.briefcase.app.diffusify.web]
 requires = [
-    "toga-web~=0.5.0",
+  "toga-web~=0.5.0",
 ]
 style_framework = "Shoelace v2.3"
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-warn_redundant_casts = true
-check_untyped_defs = true
-strict_optional = true
-disallow_any_explicit = true
-show_error_codes = true
-ignore_missing_imports=true
-warn_unused_ignores = true
-namespace_packages = true
-
-[tool.ruff]
-line-length = 88
-target-version = "py312"
-
-[tool.ruff.lint]
-select = [
-    "B",
-    "B9",
-    "C",
-    "E",
-    "F",
-    "PLW1",
-    "SLF",
-    "UP",
-    "W",
-]
-extend-select = ["I"]
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["SLF001"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
