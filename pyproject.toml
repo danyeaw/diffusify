@@ -42,6 +42,7 @@ lint.per-file-ignores."tests/*" = [ "SLF001" ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "module"
 
 [tool.mypy]
 python_version = "3.11"

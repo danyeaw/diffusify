@@ -21,7 +21,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgirepository-2.0-dev libcairo2-dev pkg-config gir1.2-gtk-3.0
+        sudo apt-get install -y mutter dbus-x11 libgirepository-2.0-dev libcairo2-dev pkg-config gir1.2-gtk-3.0
 
     - name: Install dependencies
       run: |
@@ -30,5 +30,8 @@ jobs:
         pip install -e .
 
     - name: Run tests
+      env:
+        XDG_RUNTIME_DIR: /tmp
       run: |
-        python -m pytest
+        eval $(dbus-launch --auto-syntax)
+        mutter --wayland --no-x11 --sm-disable --headless -- pytest
