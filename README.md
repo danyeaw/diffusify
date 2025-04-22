@@ -4,7 +4,8 @@ Diffusify is a cross-platform desktop application for AI image generation using
 the Stable Diffusion XL model. Create stunning images from text prompts with an
 intuitive interface.
 
-![Screenshot of the main window with a generated scenic picture of mountains and a lake]()
+![Screenshot of the main window with a generated scenic picture of mountains
+and a lake](docs/images/screenshot-main-window-mountains.png)
 
 ## Features
 
@@ -92,7 +93,7 @@ Technical Implementation
 
 ## License
 
-[MIT License]()
+[MIT License](LICENSE)
 
 ## Acknowledgments
 
