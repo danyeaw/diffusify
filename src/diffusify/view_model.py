@@ -192,6 +192,7 @@ class DiffusifyViewModel:
             )
         )
 
+        self.update_status("Generating the image...")
         start_time = time.time()
 
         # Generate the image
