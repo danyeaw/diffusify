@@ -55,9 +55,12 @@ class DiffusifyView(toga.Box):
         prompt_box = toga.Box(style=Pack(direction=COLUMN, margin_bottom=10))
         prompt_label = toga.Label("Prompt:", style=Pack(margin_bottom=5))
         prompt_box.add(prompt_label)
+        prompt = (
+            "A single professional photograph of a mountain landscape, high quality"
+        )
         self.prompt_input = toga.MultilineTextInput(
             placeholder="Enter prompt here...",
-            value="a professional photograph of a mountain landscape, high quality",
+            value=prompt,
             style=Pack(margin=5, height=100),
         )
         prompt_box.add(self.prompt_input)
@@ -67,9 +70,13 @@ class DiffusifyView(toga.Box):
         neg_prompt_box = toga.Box(style=Pack(direction=COLUMN, margin_bottom=10))
         neg_prompt_label = toga.Label("Negative Prompt:", style=Pack(margin_bottom=5))
         neg_prompt_box.add(neg_prompt_label)
+        prompt = (
+            "Low quality, blurry, distorted, ugly, bad anatomy, "
+            "picture frame, magazine, text"
+        )
         self.neg_prompt_input = toga.MultilineTextInput(
             placeholder="Enter negative prompt here...",
-            value="low quality, blurry, distorted, ugly, bad anatomy",
+            value=prompt,
             style=Pack(margin=5, height=60),
         )
         neg_prompt_box.add(self.neg_prompt_input)
