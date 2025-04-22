@@ -1,4 +1,3 @@
-import asyncio
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -121,14 +120,11 @@ class DiffusifyViewModel:
         """
         self.update_status("Loading model... Please wait.")
 
-        # Simulate progress while loading
-        for i in range(1, 5):
-            progress = i * 20
-            if self.on_progress_update:
-                self.on_progress_update(progress)
-            self.update_status(f"Loading model... {progress}%")
-            await asyncio.sleep(0.3)
+        # Signal indeterminate progress during model loading
+        if self.on_progress_update:
+            self.on_progress_update(-1)  # Special value for indeterminate progress
 
+        # Perform the actual model loading
         success, error = await self.model.load_pipeline(
             use_attention_slicing=use_attention_slicing, use_karras=use_karras
         )
@@ -152,6 +148,7 @@ class DiffusifyViewModel:
         else:
             self.update_status(f"Error loading model: {error}")
 
+        # Signal completion of the loading process
         if self.on_progress_update:
             self.on_progress_update(100)
 
@@ -174,9 +171,7 @@ class DiffusifyViewModel:
         Returns:
             Success flag
         """
-        # Reset progress and update status
-        if self.on_progress_update:
-            self.on_progress_update(0)
+        # Update status
         self.update_status("Preparing to generate image...")
 
         # Load model if needed
@@ -195,7 +190,7 @@ class DiffusifyViewModel:
         self.update_status("Generating the image...")
         start_time = time.time()
 
-        # Generate the image
+        # Generate the image - progress will be reported by model callbacks
         output_path, seed, has_nsfw_content, error = await self.model.generate_image(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -228,6 +223,7 @@ class DiffusifyViewModel:
         if self.on_image_generated:
             self.on_image_generated(output_path)
 
+        # Signal completion
         if self.on_progress_update:
             self.on_progress_update(100)
 
@@ -235,16 +231,6 @@ class DiffusifyViewModel:
             self.on_operation_complete(True)
 
         return True
-
-    def _update_progress(self, value: int):
-        """Helper method to update progress if callback is set."""
-        if self.on_progress_update:
-            self.on_progress_update(value)
-
-    def _complete_operation(self, success: bool):
-        """Helper method to call operation complete callback if set."""
-        if self.on_operation_complete:
-            self.on_operation_complete(success)
 
     async def save_image(self, save_path: str) -> bool:
         """Save the generated image to a file.
@@ -258,32 +244,33 @@ class DiffusifyViewModel:
         # Validate prerequisites
         if not self.output_image_path:
             self.update_status("No image to save.")
-            self._complete_operation(False)
+            if self.on_operation_complete:
+                self.on_operation_complete(False)
             return False
 
         if not save_path:
             self.update_status("Error: Save path cannot be empty.")
-            self._complete_operation(False)
+            if self.on_operation_complete:
+                self.on_operation_complete(False)
             return False
 
-        # Update status and progress
-        self._update_progress(0)
-        self.update_status("Preparing to save image...")
-        self._update_progress(50)
+        # Update status without progress tracking
         self.update_status("Saving image...")
 
-        # Perform the save operation
+        # Perform the save operation without progress tracking
         error = await save_image(self.output_image_path, save_path)
 
         # Handle result
         if error:
             self.update_status(f"Error saving image: {error}")
-            self._complete_operation(False)
+            if self.on_operation_complete:
+                self.on_operation_complete(False)
             return False
 
         # Report success
         file_name = Path(save_path).name
         self.update_status(f"Image saved to {file_name}")
-        self._update_progress(100)
-        self._complete_operation(True)
+
+        if self.on_operation_complete:
+            self.on_operation_complete(True)
         return True

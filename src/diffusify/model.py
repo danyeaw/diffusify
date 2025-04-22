@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +24,7 @@ class DiffusionModel:
         self.model_loaded = False
         self.total_steps = 0
         self._progress_callback = None
+        self._main_loop = None
 
     def set_progress_callback(self, callback: Callable[[int], None] | None):
         """Set a callback function for progress updates.
@@ -31,29 +33,28 @@ class DiffusionModel:
             callback: Function that receives the progress percentage
         """
         self._progress_callback = callback
+        # Store the main event loop when setting up the callback
+        self._main_loop = asyncio.get_event_loop()
 
-    def _progress_callback_wrapper(self, pipe, step, t, callback_kwargs):
+    def _progress_callback_wrapper(self, pipe, step_index, timestep, callback_kwargs):
         """Wrapper for the pipeline's callback on step end."""
-        percentage = int((step / self.total_steps) * 100)
+        # StableDiffusionXL pipeline uses 0-based indexing for steps
+        current_step = step_index + 1
+        percentage = int((current_step / self.total_steps) * 100)
 
         # Call the external progress callback if set
-        if self._progress_callback:
-            self._progress_callback(percentage)
+        if self._progress_callback and self._main_loop:
+            # Schedule the callback to run in the main event loop
+            self._main_loop.call_soon_threadsafe(
+                functools.partial(self._progress_callback, percentage)
+            )
 
         return callback_kwargs
 
     async def load_pipeline(
         self, use_attention_slicing: bool = True, use_karras: bool = False
     ) -> tuple[bool, str | None]:
-        """Initialize the diffusion pipeline asynchronously.
-
-        Args:
-            use_attention_slicing: Whether to enable attention slicing
-            use_karras: Whether to use Karras scheduler
-
-        Returns:
-            Tuple of (success, error_message)
-        """
+        """Initialize the diffusion pipeline asynchronously."""
         try:
             # Define work to be done in executor
             def _load_pipeline_sync():
@@ -118,14 +119,7 @@ class DiffusionModel:
             return False, str(e)
 
     def apply_safety_checker(self, image: Image) -> tuple[Image, bool]:
-        """Apply safety checker to the generated image.
-
-        Args:
-            image: PIL Image to check
-
-        Returns:
-            tuple: (filtered_image, has_nsfw_content)
-        """
+        """Apply safety checker to the generated image."""
         if not self.safety_checker or not self.feature_extractor:
             return image, False
 
@@ -182,19 +176,7 @@ class DiffusionModel:
         width: int,
         height: int,
     ) -> tuple[str | None, int | None, bool, str | None]:
-        """Generate an image from text prompt.
-
-        Args:
-            prompt: Text prompt for image generation
-            negative_prompt: Negative prompt
-            steps: Number of diffusion steps
-            guidance_scale: Guidance scale for diffusion
-            width: Image width
-            height: Image height
-
-        Returns:
-            Tuple of (image_path, seed, has_nsfw_content, error_message)
-        """
+        """Generate an image from text prompt."""
         if not self.model_loaded:
             return None, None, False, "Model not loaded"
 
@@ -202,6 +184,10 @@ class DiffusionModel:
         self.total_steps = steps
 
         try:
+            # Report initial progress
+            if self._progress_callback:
+                self._progress_callback(0)
+
             # Define the generation work to be done in the executor
             def _generate_image_sync():
                 try:
@@ -210,6 +196,7 @@ class DiffusionModel:
                     generator = torch.Generator().manual_seed(seed)
 
                     if self.pipeline:
+                        # Disable the built-in progress bar
                         self.pipeline.set_progress_bar_config(disable=True)
 
                         # Generate the image using the callback method
@@ -222,6 +209,7 @@ class DiffusionModel:
                             width=width,
                             height=height,
                             callback_on_step_end=self._progress_callback_wrapper,
+                            callback_steps=1,  # Call after every step
                         )
 
                         output_image = pipeline_output.images[0]
@@ -265,15 +253,7 @@ def _save_file_sync(source_path: Path, save_path: Path) -> str | None:
 
 
 async def save_image(source_path: Path, save_path: Path) -> str | None:
-    """Save the image to a file.
-
-    Args:
-        source_path: Path to the source image
-        save_path: Path where to save the image
-
-    Returns:
-        Error message if failed, None if successful
-    """
+    """Save the image to a file."""
     try:
         # Run the file saving in a thread executor
         loop = asyncio.get_event_loop()

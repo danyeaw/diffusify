@@ -173,9 +173,11 @@ class DiffusifyView(toga.Box):
         )
         status_box.add(self.status_label)
 
-        # Progress bar
+        # Progress bar - initially stopped and hidden
         self.progress_bar = toga.ProgressBar(max=100, value=0, style=Pack(margin=5))
+        self.progress_bar.stop()
         status_box.add(self.progress_bar)
+
         # Initially hide the progress bar
         self.progress_bar.style.update(visibility="hidden")
 
@@ -237,25 +239,48 @@ class DiffusifyView(toga.Box):
         save_path = Path(await widget.window.dialog(save_dialog))
 
         if save_path:
-            # Save the image using the ViewModel
+            # Disable the save button during saving
+            self.save_button.enabled = False
+
+            # Save the image using the ViewModel (no progress tracking)
             await self.viewmodel.save_image(save_path)
+
+            # Re-enable the button
+            self.save_button.enabled = True
 
     # === Callback handlers ===
     def update_progress(self, value):
         """Update the progress bar."""
-        if value == 0:
-            self.show_progress(True)
+        # Special case for indeterminate progress
+        if value == -1:
+            # Switch to indeterminate mode
+            self.progress_bar.max = None
+            self.progress_bar.start()
+            self.progress_bar.style.update(visibility="visible")
+            self._progress_visible = True
+            return
 
+        # Switch back to determinate mode if needed
+        if self.progress_bar.max is None:
+            self.progress_bar.max = 100
+
+        # Update the progress value
         self.progress_bar.value = value
 
+        # Show progress bar if it's hidden
+        if not self._progress_visible:
+            self.progress_bar.style.update(visibility="visible")
+            self.progress_bar.start()
+            self._progress_visible = True
+
+        # Schedule the progress bar to be hidden after completion
         if value >= 100:
-            # Schedule hiding the progress bar after a delay
+
             async def hide_progress_after_delay():
-                try:
-                    await asyncio.sleep(1.5)
-                    self.show_progress(False)
-                except Exception as e:
-                    print(f"Error hiding progress bar: {e}")
+                await asyncio.sleep(1.5)
+                self.progress_bar.stop()
+                self.progress_bar.style.update(visibility="hidden")
+                self._progress_visible = False
 
             loop = asyncio.get_event_loop()
             loop.create_task(hide_progress_after_delay())
@@ -274,12 +299,3 @@ class DiffusifyView(toga.Box):
         self.generate_button.enabled = True
         if success and hasattr(self, "output_image"):
             self.save_button.enabled = True
-
-    def show_progress(self, show=True):
-        """Show or hide the progress bar."""
-        if show and not self._progress_visible:
-            self.progress_bar.style.update(visibility="visible")
-            self._progress_visible = True
-        elif not show and self._progress_visible:
-            self.progress_bar.style.update(visibility="hidden")
-            self._progress_visible = False
