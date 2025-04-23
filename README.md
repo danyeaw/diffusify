@@ -91,6 +91,12 @@ Technical Implementation
 - Thread-Safe Callbacks: Properly handles updates from worker threads
 - Error Handling: Graceful management of errors during generation and saving
 
+## Known Issues or Future Enhancements
+
+- With the macOS pkg, an extra Window is opening while generating an image.
+This is most likely cause by one of the libraries calling `sys.executable`.
+- Allow selecting other models or potentially a ComfyUI style pipeline config.
+
 ## License
 
 [MIT License](LICENSE)
